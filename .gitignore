@@ -1,0 +1,43 @@
+# Python
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+*.pot
+*.log
+*.DS_Store
+*.py[cod]
+
+# Django
+db.sqlite3
+*.sqlite3
+/static/
+media/
+
+# Environment and IDE
+.env
+.env.*
+.vscode/
+.idea/
+
+# Virtual environments
+expense_tracker_api_env/
+venv/
+env/
+.venv/
+.menv/
+ENV/
+pyvenv.cfg
+
+# React
+node_modules/
+dist/
+build/
+node_modules
+.npm
+npm-debug.log*
+
+# Miscellaneous
+coverage/
+*.egg-info/
+
