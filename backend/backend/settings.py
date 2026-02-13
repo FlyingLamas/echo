@@ -16,6 +16,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# For enabling token roation in simple_JWT at the bottom
+from datetime import timedelta
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -37,6 +40,8 @@ ALLOWED_HOSTS = []
 INSTALLED_APPS = [
     # users app is written at the top because, if other apps are written before then they might run with the default django user model and not our model.
     "users",
+    "services",
+    "transfers",
     
     'django.contrib.admin',
     'django.contrib.auth',
@@ -138,3 +143,17 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # This is written after creating custom user model. The First users represents our users app that we created
 AUTH_USER_MODEL = "users.User"
+
+REST_FRAMEWORK = {
+	    "DEFAULT_AUTHENTICATION_CLASSES": [
+	        "rest_framework_simplejwt.authentication.JWTAuthentication",
+	    ]
+	}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days = 7),
+    "ROTATE_RERESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "AUTH_HEADER_TYPES": ("Bearer",),
+}
