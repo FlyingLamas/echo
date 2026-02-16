@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "users",
     "services",
     "transfers",
+    "providers",
     
     'django.contrib.admin',
     'django.contrib.auth',
@@ -157,3 +158,8 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+# Spotify settings
+SPOTIFY_CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
+SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
+SPOTIFY_REDIRECT_URI = os.getenv("SPOTIFY_REDIRECT_URI")
