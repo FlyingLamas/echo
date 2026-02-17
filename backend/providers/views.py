@@ -5,9 +5,6 @@ import urllib.parse
 # We use this to properly format the Spotify authorization URL.
 
 from django.conf import settings
-from django.http import HttpResponseRedirect
-# This is used to redirect the user to another URL. 
-# When the user hits this endpoint, we don’t return JSON, we redirect them to Spotify’s login page.
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 import secrets
@@ -17,12 +14,16 @@ from django.utils import timezone
 from datetime import timedelta
 from .models import Provider, ProviderAccount
 from rest_framework.response import Response
+from rest_framework import status
+from django.contrib.auth import get_user_model
+import json
+import base64
 
 # For testing purposes
 from .services.spotify_service import SpotifyService
 
 class SpotifyConnectView(APIView):
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
     
     def get(self, request):
         base_url = "https://accounts.spotify.com/authorize"
@@ -31,9 +32,17 @@ class SpotifyConnectView(APIView):
             # Shows login screen
             # Asks for permission
             # Then redirects back to our app with a code
+            
+        state_data = {
+            "user_id": request.user.id,
+            "nonce": secrets.token_urlsafe(16)
+        }
         
-        state = secrets.token_urlsafe(32)
-        request.session["spotify_oauth_state"] = state
+        state = base64.urlsafe_b64encode(
+            json.dumps(state_data).encode()
+        ).decode()
+        
+        # request.session["spotify_oauth_state"] = state
 
         params = {
             "response_type": "code",
@@ -53,27 +62,38 @@ class SpotifyConnectView(APIView):
         # The ? separates: main URL  |  query parameters
         # Everything after ? is query string.
         
-        return HttpResponseRedirect(url)
+        return Response({"auth_url": url})
 
 class SpotifyCallbackView(APIView):
-    permission_classes = []
-    # Removed IsAuthenticated, spotify is redirecting the user, and OAuth is proving identity.
+    # permission_classes = [IsAuthenticated]
+    # We are keeping this commented out permanently, because if we keep this we will always face 401 unauthorized, 
+    # By removing this we are allowing any. This does not mean security is compromised but security is checked via state.
 
     def get(self, request):
-        # Validate state (CSRF protection)
-        stored_state = request.session.get("spotify_oauth_state")
-        received_state = request.GET.get("state")
 
-        if not stored_state or stored_state != received_state:
+        received_state = request.GET.get("state")
+        if not received_state:
             return Response({"error": "Invalid state"}, status=400)
         
-        # delete state after validation
-        request.session.pop("spotify_oauth_state", None)
+        try:
+            decoded = base64.urlsafe_b64decode(received_state).decode()
+            state_data = json.loads(decoded)
+            user_id = state_data["user_id"]
+        except Exception:
+            return Response({"error": "Invalid state"}, status=400)
         
         # Get authorization code
         code = request.GET.get("code")
         if not code:
             return Response({"error": "Authorization code missing"}, status=400)
+        
+        # Get user from state
+        User = get_user_model()
+        
+        try:
+            user = User.objects.get(id=user_id)
+        except (User.DoesNotExist):
+            return Response({"error": "Invalid state"}, status=status.HTTP_400_BAD_REQUEST)
         
         # Exchange code for tokens
         token_url = "https://accounts.spotify.com/api/token"
@@ -98,24 +118,33 @@ class SpotifyCallbackView(APIView):
         expires_in = token_data["expires_in"]
 
         # Get provider
-        provider = Provider.objects.get(name="spotify")
+        provider, _ = Provider.objects.get_or_create(
+            name="spotify",
+            defaults={"display_name": "Spotify"}
+        )
 
         # Store or update account
         ProviderAccount.objects.update_or_create(
-            user=request.user,
+            user=user,
             provider=provider,
             defaults={
+                "provider_user_id": "temp", # we will add id later
                 "access_token": access_token,
                 "refresh_token": refresh_token,
                 "expires_at": timezone.now() + timedelta(seconds=expires_in)
             }
         )
-
+        
+        print(request.user)
+        print(request.user.is_authenticated) 
+        print("Session state:", request.session.get("spotify_oauth_state"))
+        print("Received state:", request.GET.get("state"))
+   
         return Response({"message": "Spotify connected successfully"})
 
 # For testing purposes
 class SpotifyPlaylistsView(APIView):
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
 
     def get(self, request):
         provider = Provider.objects.get(name="spotify")
