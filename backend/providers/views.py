@@ -122,24 +122,37 @@ class SpotifyCallbackView(APIView):
             name="spotify",
             defaults={"display_name": "Spotify"}
         )
+        
+        headers = {
+            "Authorization": f"Bearer {access_token}"
+        }
+
+        profile_response = requests.get(
+            "https://api.spotify.com/v1/me",
+            headers=headers
+        )
+        
+        if profile_response.status_code != 200:
+            return Response(
+                {"error": "Failed to fetch Spotify profile"},
+                status=400
+            )
+
+        profile_data = profile_response.json()
+        provider_user_id = profile_data["id"]
 
         # Store or update account
         ProviderAccount.objects.update_or_create(
             user=user,
             provider=provider,
             defaults={
-                "provider_user_id": "temp", # we will add id later
+                "provider_user_id": provider_user_id,
                 "access_token": access_token,
                 "refresh_token": refresh_token,
                 "expires_at": timezone.now() + timedelta(seconds=expires_in)
             }
         )
-        
-        print(request.user)
-        print(request.user.is_authenticated) 
-        print("Session state:", request.session.get("spotify_oauth_state"))
-        print("Received state:", request.GET.get("state"))
-   
+           
         return Response({"message": "Spotify connected successfully"})
 
 # For testing purposes
