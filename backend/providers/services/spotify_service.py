@@ -131,6 +131,7 @@ class SpotifyService:
                         "artists": ", ".join(artist["name"] for artist in track["artists"]),
                         "album": track["album"]["name"],
                         "duration_ms": track["duration_ms"],
+                        "uri": track["uri"],
                     })
             
             if not data.get("next"):
