@@ -48,8 +48,9 @@ class SpotifyConnectView(APIView):
             "response_type": "code",
             "client_id": settings.SPOTIFY_CLIENT_ID,
             "redirect_uri": settings.SPOTIFY_REDIRECT_URI,
-            "scope": "playlist-read-private playlist-modify-public playlist-modify-private",
-            "state": state,   
+            "scope": "playlist-read-private playlist-modify-public playlist-modify-private playlist-read-collaborative user-library-read",
+            "state": state,
+            "show_dialog": "true",
         }
 
         url = f"{base_url}?{urllib.parse.urlencode(params)}"
@@ -112,6 +113,9 @@ class SpotifyCallbackView(APIView):
             return Response({"error": "Failed to get token"}, status=400)
         
         token_data = response.json()
+        
+        print("Full token response:", token_data)
+        print("Scopes returned:", token_data.get("scope"))
 
         access_token = token_data["access_token"]
         refresh_token = token_data.get("refresh_token")
@@ -155,15 +159,38 @@ class SpotifyCallbackView(APIView):
            
         return Response({"message": "Spotify connected successfully"})
 
-# For testing purposes
 class SpotifyPlaylistsView(APIView):
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         provider = Provider.objects.get(name="spotify")
         account = ProviderAccount.objects.get(user=request.user, provider=provider)
 
         service = SpotifyService(account)
-        data = service.get_user_playlists()
+        playlists = service.get_user_playlists()
 
-        return Response(data)
+        return Response(playlists)
+
+from rest_framework.permissions import IsAuthenticated
+
+class SpotifyPlaylistTracksView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, playlist_id):
+
+        provider = Provider.objects.get(name="spotify")
+
+        account = ProviderAccount.objects.get(
+            user=request.user,
+            provider=provider
+        )
+
+        service = SpotifyService(account)
+
+        if playlist_id == "liked_songs":
+            tracks = service.get_liked_songs()
+        else:
+            tracks = service.get_playlist_tracks(playlist_id)
+
+        return Response(tracks)
+
