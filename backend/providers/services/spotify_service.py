@@ -42,7 +42,7 @@ class SpotifyService:
         if self._is_token_expired():
             self._refresh_access_token()
             
-    def _make_request(self, method, endpoint, params=None, data=None):
+    def _make_request(self, method, endpoint, params=None, data=None, retry=True):
         self._ensure_token_valid()
         
         headers = {
@@ -58,6 +58,18 @@ class SpotifyService:
             json=data
         )
         
+        # Handle expired token mid-call
+        if response.status_code == 401 and retry:
+            self._refresh_access_token()
+            return self._make_request(method, endpoint, params, data, retry=False)
+        
+        # Rate limit handling
+        if response.status_code == 429:
+            retry_after = int(response.headers.get("Retry-After", 5))
+            error = Exception("Rate limited by Spotify")
+            error.retry_after = retry_after
+            raise error
+        
         if response.status_code >= 400:
             raise Exception(f"Spotify API error: {response.text}")
 
@@ -67,29 +79,30 @@ class SpotifyService:
         return self._make_request("GET", "/me")
     
     def get_user_playlists(self):
-        self._ensure_token_valid()
-
-        headers = {
-            "Authorization": f"Bearer {self.account.access_token}"
-        }
-
-        url = "https://api.spotify.com/v1/me/playlists?limit=50"
-        response = requests.get(url, headers=headers)
-
-        if response.status_code != 200:
-            return {"error": "Failed to fetch playlists"}
-
-        data = response.json()
-
         playlists = []
 
-        for playlist in data["items"]:
-            playlists.append({
-                "id": playlist["id"],
-                "name": playlist["name"],
-                "tracks_total": playlist.get("tracks", {}).get("total", 0),
-                "type": "playlist"
-            })
+        offset = 0
+        limit = 50
+
+        while True:
+            data = self._make_request(
+                "GET",
+                "/me/playlists",
+                params={"limit": limit, "offset": offset}
+            )
+
+            for playlist in data["items"]:
+                playlists.append({
+                    "id": playlist["id"],
+                    "name": playlist["name"],
+                    "tracks_total": playlist.get("tracks", {}).get("total", 0),
+                    "type": "playlist"
+                })
+
+            if not data.get("next"):
+                break
+
+            offset += limit
 
         playlists.insert(0, {
             "id": "liked_songs",
@@ -101,29 +114,20 @@ class SpotifyService:
         return playlists
     
     def get_playlist_tracks(self, playlist_id):
-        self._ensure_token_valid()
-
-        headers = {
-            "Authorization": f"Bearer {self.account.access_token}"
-        }
-        
         limit = 100
         offset = 0
         tracks = []
-        
-        while True:
-            url = f"https://api.spotify.com/v1/playlists/{playlist_id}/items?limit={limit}&offset={offset}"
 
-            response = requests.get(url, headers=headers)
-            
-            if response.status_code != 200:
-                return {"error": "Failed to fetch tracks"}
-            
-            data = response.json()
-            
+        while True:
+            data = self._make_request(
+                "GET",
+                f"/playlists/{playlist_id}/items",
+                params={"limit": limit, "offset": offset}
+            )
+
             for entry in data["items"]:
-                track = entry.get("item")
-                
+                track = entry.get("track")  # IMPORTANT FIX
+
                 if track and track["type"] == "track":
                     tracks.append({
                         "id": track.get("id"),
@@ -133,42 +137,31 @@ class SpotifyService:
                         "duration_ms": track["duration_ms"],
                         "uri": track["uri"],
                     })
-            
+
             if not data.get("next"):
                 break
-            
+
             offset += limit
 
         return tracks
     
     def get_liked_songs(self):
-        self._ensure_token_valid()
-
-        headers = {
-            "Authorization": f"Bearer {self.account.access_token}"
-        }
-
         limit = 50
         offset = 0
         liked_tracks = []
 
         while True:
-            url = (
-                f"https://api.spotify.com/v1/me/tracks"
-                f"?limit={limit}&offset={offset}"
+            data = self._make_request(
+                "GET",
+                "/me/tracks",
+                params={"limit": limit, "offset": offset}
             )
-
-            response = requests.get(url, headers=headers)
-
-            if response.status_code != 200:
-                return {"error": "Failed to fetch liked songs"}
-
-            data = response.json()
 
             for entry in data["items"]:
                 track = entry["track"]
 
                 liked_tracks.append({
+                    "id": track.get("id"),
                     "name": track["name"],
                     "artists": ", ".join(
                         artist["name"] for artist in track["artists"]
