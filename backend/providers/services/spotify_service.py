@@ -72,6 +72,8 @@ class SpotifyService:
         
         if response.status_code >= 400:
             raise Exception(f"Spotify API error: {response.text}")
+        
+        print(method, endpoint)
 
         return response.json()
 
@@ -124,15 +126,15 @@ class SpotifyService:
                 f"/playlists/{playlist_id}/items",
                 params={"limit": limit, "offset": offset}
             )
-
+            
             for entry in data["items"]:
-                track = entry.get("track")  # IMPORTANT FIX
+                track = entry.get("item")
 
                 if track and track["type"] == "track":
                     tracks.append({
                         "id": track.get("id"),
                         "name": track["name"],
-                        "artists": ", ".join(artist["name"] for artist in track["artists"]),
+                        "artists": [artist["name"] for artist in track["artists"]],
                         "album": track["album"]["name"],
                         "duration_ms": track["duration_ms"],
                         "uri": track["uri"],
@@ -142,7 +144,7 @@ class SpotifyService:
                 break
 
             offset += limit
-
+        
         return tracks
     
     def get_liked_songs(self):
@@ -163,9 +165,7 @@ class SpotifyService:
                 liked_tracks.append({
                     "id": track.get("id"),
                     "name": track["name"],
-                    "artists": ", ".join(
-                        artist["name"] for artist in track["artists"]
-                    ),
+                    "artists": [artist["name"] for artist in track["artists"]],
                     "album": track["album"]["name"],
                     "duration_ms": track["duration_ms"]
                 })
@@ -177,3 +177,48 @@ class SpotifyService:
 
         return liked_tracks
 
+    def search_track(self, query, limit=5):
+        data = self._make_request(
+            "GET",
+            "/search",
+            params={
+                "q": query,
+                "type": "track",
+                "limit": limit
+            }
+        )
+
+        return data.get("tracks", {}).get("items", [])
+    
+    def create_playlist(self, name, description="Transferred playlist"):
+        profile = self.get_user_profile()
+        user_id = profile["id"]
+
+        data = self._make_request(
+            "POST",
+            f"/users/{user_id}/playlists",
+            data={
+                "name": name,
+                "description": description,
+                "public": False
+            }
+        )
+
+        return data["id"]
+    
+    def add_tracks_to_playlist(self, playlist_id, track_uris):
+        if not track_uris:
+            return
+
+        chunk_size = 100
+
+        for i in range(0, len(track_uris), chunk_size):
+            chunk = track_uris[i:i+chunk_size]
+
+            self._make_request(
+                "POST",
+                f"/playlists/{playlist_id}/tracks",
+                data={"uris": chunk}
+            )
+            
+    
